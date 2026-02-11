@@ -277,6 +277,7 @@ func scroll(ctx context.Context,
 ) (int, error) {
 	expr := `async () => {
 		const el = document.querySelector("` + scrollSelector + `");
+		if (!el) { return 0; }
 		el.scrollTop = el.scrollHeight;
 
 		return new Promise((resolve, reject) => {
