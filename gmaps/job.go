@@ -151,10 +151,16 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 	return nil, next, nil
 }
 
-func (j *GmapJob) BrowserActions(ctx context.Context, page playwright.Page) scrapemate.Response {
+func (j *GmapJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {
 	var resp scrapemate.Response
 
-	pageResponse, err := page.Goto(j.GetFullURL(), playwright.PageGotoOptions{
+	concretePage, ok := page.(playwright.Page)
+	if !ok {
+		resp.Error = fmt.Errorf("page is not a playwright.Page")
+		return resp
+	}
+
+	pageResponse, err := concretePage.Goto(j.GetFullURL(), playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 
