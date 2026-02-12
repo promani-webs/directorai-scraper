@@ -106,10 +106,16 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	return &entry, nil, err
 }
 
-func (j *PlaceJob) BrowserActions(ctx context.Context, page playwright.Page) scrapemate.Response {
+func (j *PlaceJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {
 	var resp scrapemate.Response
 
-	pageResponse, err := page.Goto(j.GetURL(), playwright.PageGotoOptions{
+	concretePage, ok := page.(playwright.Page)
+	if !ok {
+		resp.Error = fmt.Errorf("page is not a playwright.Page")
+		return resp
+	}
+
+	pageResponse, err := concretePage.Goto(j.GetURL(), playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	})
 	if err != nil {
@@ -118,25 +124,15 @@ func (j *PlaceJob) BrowserActions(ctx context.Context, page playwright.Page) scr
 		return resp
 	}
 
-	if err != nil {
+	if err = clickRejectCookiesIfRequired(concretePage); err != nil {
 		resp.Error = err
 
 		return resp
 	}
 
-	// This is required because scrapemate.BrowserPage does not implement AddInitScript
-	// which is required by clickRejectCookiesIfRequired
-	if concretePage, ok := page.(playwright.Page); ok {
-		if err = clickRejectCookiesIfRequired(concretePage); err != nil {
-			resp.Error = err
-
-			return resp
-		}
-	}
-
 	const defaultTimeout = 5000
 
-	err = page.WaitForURL(page.URL(), playwright.PageWaitForURLOptions{
+	err = concretePage.WaitForURL(concretePage.URL(), playwright.PageWaitForURLOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 		Timeout:   playwright.Float(defaultTimeout),
 	})
@@ -154,7 +150,7 @@ func (j *PlaceJob) BrowserActions(ctx context.Context, page playwright.Page) scr
 		resp.Headers.Add(k, v)
 	}
 
-	raw, err := j.extractJSON(page)
+	raw, err := j.extractJSON(concretePage)
 	if err != nil {
 		resp.Error = err
 
@@ -171,8 +167,8 @@ func (j *PlaceJob) BrowserActions(ctx context.Context, page playwright.Page) scr
 		reviewCount := j.getReviewCount(raw)
 		if reviewCount > 8 { // we have more reviews
 			params := fetchReviewsParams{
-				page:        page,
-				mapURL:      page.URL(),
+				page:        concretePage,
+				mapURL:      concretePage.URL(),
 				reviewCount: reviewCount,
 			}
 
