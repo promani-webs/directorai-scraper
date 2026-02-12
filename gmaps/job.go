@@ -10,10 +10,10 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/google/uuid"
-	"github.com/gosom/scrapemate"
-
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/scrapemate"
+	"github.com/playwright-community/playwright-go"
 )
 
 type GmapJobOptions func(*GmapJob)
@@ -53,7 +53,7 @@ func NewGmapJob(
 	if geoCoordinates != "" && zoom > 0 {
 		mapURL = fmt.Sprintf("https://www.google.com/maps/search/%s/@%s,%dz", query, strings.ReplaceAll(geoCoordinates, " ", ""), zoom)
 	} else {
-		// Warning: geo and zoom MUST be both set or not
+		//Warning: geo and zoom MUST be both set or not
 		mapURL = fmt.Sprintf("https://www.google.com/maps/search/%s", query)
 	}
 
@@ -151,36 +151,54 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 	return nil, next, nil
 }
 
-func (j *GmapJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {
+func (j *GmapJob) BrowserActions(ctx context.Context, page playwright.Page) scrapemate.Response {
 	var resp scrapemate.Response
 
-	pageResponse, err := page.Goto(j.GetFullURL(), scrapemate.WaitUntilDOMContentLoaded)
+	pageResponse, err := page.Goto(j.GetFullURL(), playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	})
+
 	if err != nil {
 		resp.Error = err
 
 		return resp
 	}
 
-	clickRejectCookiesIfRequired(page)
+	if err = clickRejectCookiesIfRequired(page); err != nil {
+		resp.Error = err
 
-	const defaultTimeout = 5 * time.Second
+		return resp
+	}
 
-	err = page.WaitForURL(page.URL(), defaultTimeout)
+	const defaultTimeout = 5000
+
+	err = page.WaitForURL(page.URL(), playwright.PageWaitForURLOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(defaultTimeout),
+	})
+
 	if err != nil {
 		resp.Error = err
 
 		return resp
 	}
 
-	resp.URL = pageResponse.URL
-	resp.StatusCode = pageResponse.StatusCode
-	resp.Headers = pageResponse.Headers
+	resp.URL = pageResponse.URL()
+	resp.StatusCode = pageResponse.Status()
+	resp.Headers = make(http.Header, len(pageResponse.Headers()))
+
+	for k, v := range pageResponse.Headers() {
+		resp.Headers.Add(k, v)
+	}
 
 	// When Google Maps finds only 1 place, it slowly redirects to that place's URL
 	// check element scroll
 	sel := `div[role='feed']`
 
-	err = page.WaitForSelector(sel, 700*time.Millisecond)
+	//nolint:staticcheck // TODO replace with the new playwright API
+	_, err = page.WaitForSelector(sel, playwright.PageWaitForSelectorOptions{
+		Timeout: playwright.Float(2000),
+	})
 
 	var singlePlace bool
 
@@ -189,6 +207,13 @@ func (j *GmapJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPag
 		defer waitCancel()
 
 		singlePlace = waitUntilURLContains(waitCtx, page, "/maps/place/")
+
+		if !singlePlace {
+			// try again to wait for the selector
+			_, err = page.WaitForSelector(sel, playwright.PageWaitForSelectorOptions{
+				Timeout: playwright.Float(5000),
+			})
+		}
 
 		waitCancel()
 	}
@@ -229,7 +254,7 @@ func (j *GmapJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPag
 	return resp
 }
 
-func waitUntilURLContains(ctx context.Context, page scrapemate.BrowserPage, s string) bool {
+func waitUntilURLContains(ctx context.Context, page playwright.Page, s string) bool {
 	ticker := time.NewTicker(time.Millisecond * 150)
 	defer ticker.Stop()
 
@@ -245,39 +270,39 @@ func waitUntilURLContains(ctx context.Context, page scrapemate.BrowserPage, s st
 	}
 }
 
-func clickRejectCookiesIfRequired(page scrapemate.BrowserPage) {
-	// Use JavaScript to find and click - faster than multiple locator calls
-	_, _ = page.Eval(`() => {
-		// Try consent form buttons first
-		const consentForm = document.querySelector('form[action*="consent.google"]');
-		if (consentForm) {
-			const btn = consentForm.querySelector('button, input[type="submit"]');
-			if (btn) {
-				btn.click();
-				return true;
-			}
-		}
-		// Try reject/decline buttons
-		const buttons = document.querySelectorAll('button, input[type="submit"]');
-		for (const btn of buttons) {
-			const text = (btn.textContent || btn.value || '').toLowerCase();
-			if (text.includes('reject') || text.includes('decline') || text.includes('ablehnen')) {
-				btn.click();
-				return true;
-			}
-		}
-		return false;
-	}`)
+func clickRejectCookiesIfRequired(page playwright.Page) error {
+	// click the cookie reject button if exists
+	sel := `form[action="https://consent.google.com/save"]:first-of-type button:first-of-type`
+
+	const timeout = 500
+
+	//nolint:staticcheck // TODO replace with the new playwright API
+	el, err := page.WaitForSelector(sel, playwright.PageWaitForSelectorOptions{
+		Timeout: playwright.Float(timeout),
+	})
+
+	if err != nil {
+		return nil
+	}
+
+	if el == nil {
+		return nil
+	}
+
+	//nolint:staticcheck // TODO replace with the new playwright API
+	return el.Click()
 }
 
 func scroll(ctx context.Context,
-	page scrapemate.BrowserPage,
+	page playwright.Page,
 	maxDepth int,
 	scrollSelector string,
 ) (int, error) {
 	expr := `async () => {
 		const el = document.querySelector("` + scrollSelector + `");
-		if (!el) { return 0; }
+		if (!el) {
+			return 0;
+		}
 		el.scrollTop = el.scrollHeight;
 
 		return new Promise((resolve, reject) => {
@@ -306,20 +331,19 @@ func scroll(ctx context.Context,
 		}
 
 		// Scroll to the bottom of the page.
-		scrollHeight, err := page.Eval(fmt.Sprintf(expr, waitTime2))
+		scrollHeight, err := page.Evaluate(fmt.Sprintf(expr, waitTime2))
 		if err != nil {
 			return cnt, err
 		}
 
-		// Handle both int and float64 (go-rod returns float64 for numbers)
-		var height int
-		switch v := scrollHeight.(type) {
-		case int:
-			height = v
-		case float64:
-			height = int(v)
-		default:
-			return cnt, fmt.Errorf("scrollHeight is not a number, got %T", scrollHeight)
+
+		height, ok := scrollHeight.(int)
+		if !ok {
+			return cnt, fmt.Errorf("scrollHeight is not an int")
+		}
+
+		if height == 0 {
+			break
 		}
 
 		if height == currentScrollHeight {
@@ -340,7 +364,8 @@ func scroll(ctx context.Context,
 			waitTime = maxWait2
 		}
 
-		page.WaitForTimeout(time.Duration(waitTime) * time.Millisecond)
+		//nolint:staticcheck // TODO replace with the new playwright API
+		page.WaitForTimeout(waitTime)
 	}
 
 	return cnt, nil
