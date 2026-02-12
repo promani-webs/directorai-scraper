@@ -1,5 +1,5 @@
 # Build stage for Playwright dependencies
-FROM ubuntu:22.04 AS playwright-deps
+FROM ubuntu:20.04 AS playwright-deps
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 #ENV PLAYWRIGHT_DRIVER_PATH=/opt/
 RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
@@ -12,27 +12,22 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && go install github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.0 \
+    && go install github.com/playwright-community/playwright-go/cmd/playwright@latest \
     && mkdir -p /opt/browsers \
     && playwright install chromium --with-deps
 
-# Build stage - ACTUALIZADO A 1.25
-FROM golang:1.25-bookworm AS builder
+# Build stage
+FROM golang:1.25.6-trixie AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
-
-# PERMITE ACTUALIZAR EL TOOLCHAIN AUTOMÁTICAMENTE SI GO.MOD LO PIDE
-ENV GOTOOLCHAIN=auto
-
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
-ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_DRIVER_PATH=/opt
 
 # Install only the necessary dependencies in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
