@@ -5,9 +5,9 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl wget \
-    && wget -q https://go.dev/dl/go1.25.1.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.25.1.linux-amd64.tar.gz \
-    && rm go1.25.1.linux-amd64.tar.gz \
+    && wget -q https://go.dev/dl/go1.25.6.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.25.6.linux-amd64.tar.gz \
+    && rm go1.25.6.linux-amd64.tar.gz \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean \
@@ -16,10 +16,14 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && mkdir -p /opt/browsers \
     && playwright install chromium --with-deps
 
-# Build stage
-FROM golang:1.24-bookworm AS builder
+# Build stage - ACTUALIZADO A 1.25
+FROM golang:1.25-bookworm AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
+
+# PERMITE ACTUALIZAR EL TOOLCHAIN AUTOMÁTICAMENTE SI GO.MOD LO PIDE
+ENV GOTOOLCHAIN=auto
+
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
