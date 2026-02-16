@@ -104,7 +104,7 @@ func ParseConfig() *Config {
 	flag.BoolVar(&cfg.Debug, "debug", false, "enable headful crawl (opens browser window) [default: false]")
 	flag.StringVar(&cfg.Dsn, "dsn", "", "database connection string [only valid with database provider]")
 	flag.BoolVar(&cfg.ProduceOnly, "produce", false, "produce seed jobs only (requires dsn)")
-	flag.DurationVar(&cfg.ExitOnInactivityDuration, "exit-on-inactivity", 0, "exit after inactivity duration (e.g., '5m')")
+	flag.DurationVar(&cfg.ExitOnInactivityDuration, "exit-on-inactivity", 30*time.Minute, "exit after inactivity duration (e.g., '5m')")
 	flag.BoolVar(&cfg.JSON, "json", false, "produce JSON output instead of CSV")
 	flag.BoolVar(&cfg.Email, "email", false, "extract emails from websites")
 	flag.StringVar(&cfg.CustomWriter, "writer", "", "use custom writer plugin (format: 'dir:pluginName')")
