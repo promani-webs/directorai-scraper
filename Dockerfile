@@ -17,7 +17,7 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && playwright install chromium --with-deps
 
 # Build stage
-FROM golang:1.25-jammy AS builder
+FROM golang:1.25.6-bookworm AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
