@@ -61,6 +61,8 @@ func main() {
 
 	cancel()
 
+	log.Println("scraped successfully")
+
 	os.Exit(0)
 }
 
