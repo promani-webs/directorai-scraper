@@ -211,6 +211,16 @@ func (j *GmapJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPag
 
 	scrollSelector := `div[role='feed']`
 
+	// If we are here, it's not a single place, so we expect a feed.
+	// But the initial verify check was very short (700ms).
+	// Let's give it a proper wait to appear.
+	if err := page.WaitForSelector(scrollSelector, 5*time.Second); err != nil {
+		// If still not found, return what we have (likely empty or just the initial page) to avoid crashing.
+		// Returning the error here is fine as it will be caught by the job retries or logged.
+		resp.Error = fmt.Errorf("feed selector not found: %w", err)
+		return resp
+	}
+
 	_, err = scroll(ctx, page, j.MaxDepth, scrollSelector)
 	if err != nil {
 		resp.Error = err
@@ -277,6 +287,9 @@ func scroll(ctx context.Context,
 ) (int, error) {
 	expr := `async () => {
 		const el = document.querySelector("` + scrollSelector + `");
+		if (!el) {
+			return -1;
+		}
 		el.scrollTop = el.scrollHeight;
 
 		return new Promise((resolve, reject) => {
