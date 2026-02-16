@@ -1,5 +1,5 @@
 # Build stage for Playwright dependencies
-FROM ubuntu:20.04 AS playwright-deps
+FROM ubuntu:22.04 AS playwright-deps
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 #ENV PLAYWRIGHT_DRIVER_PATH=/opt/
 RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
@@ -17,7 +17,7 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && playwright install chromium --with-deps
 
 # Build stage
-FROM golang:1.25.6-trixie AS builder
+FROM golang:1.25-jammy AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -25,7 +25,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
-FROM debian:trixie-slim
+FROM ubuntu:22.04
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt
 
@@ -40,17 +40,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdrm2 \
     libdbus-1-3 \
     libxkbcommon0 \
-    libatspi2.0-0 \
-    libx11-6 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
     libxcomposite1 \
     libxdamage1 \
-    libxext6 \
     libxfixes3 \
     libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
+    libxcursor1 \
+    libxi6 \
+    libxtst6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
