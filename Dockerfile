@@ -12,7 +12,7 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && go install github.com/playwright-community/playwright-go/cmd/playwright@latest \
+    && go install github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 \
     && mkdir -p /opt/browsers \
     && playwright install chromium --with-deps
 
@@ -27,7 +27,7 @@ RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 # Final stage
 FROM ubuntu:22.04
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
-ENV PLAYWRIGHT_DRIVER_PATH=/opt
+ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
 
 # Install only the necessary dependencies in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
