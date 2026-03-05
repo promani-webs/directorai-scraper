@@ -8,8 +8,9 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && wget -q https://go.dev/dl/go1.25.6.linux-amd64.tar.gz \
     && tar -C /usr/local -xzf go1.25.6.linux-amd64.tar.gz \
     && rm go1.25.6.linux-amd64.tar.gz \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    && wget -q https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.gz \
+    && tar -C /usr/local --strip-components=1 -xzf node-v20.18.0-linux-x64.tar.gz \
+    && rm node-v20.18.0-linux-x64.tar.gz \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && go install github.com/playwright-community/playwright-go/cmd/playwright@v0.5200.1 \
