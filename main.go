@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/gosom/google-maps-scraper/runner"
@@ -17,7 +19,22 @@ import (
 	"github.com/gosom/google-maps-scraper/runner/webrunner"
 )
 
+type filteringHandler struct {
+	slog.Handler
+}
+
+func (h *filteringHandler) Handle(ctx context.Context, r slog.Record) error {
+	msg := r.Message
+	if strings.Contains(msg, "Downloading browsers") || strings.Contains(msg, "Downloaded browsers") || strings.Contains(msg, "Downloading driver") || strings.Contains(msg, "Downloaded driver") {
+		return nil
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
 func main() {
+	// Filter out redundant playwright-go logs
+	slog.SetDefault(slog.New(&filteringHandler{Handler: slog.Default().Handler()}))
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	runner.Banner()
