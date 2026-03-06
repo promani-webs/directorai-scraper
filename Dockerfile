@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 # Final stage
 FROM ubuntu:22.04
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
-ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Install only the necessary dependencies in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -55,10 +55,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=playwright-deps /opt/browsers /opt/browsers
-COPY --from=playwright-deps /root/.cache/ms-playwright-go /opt/ms-playwright-go
+COPY --from=playwright-deps /root/.cache/ms-playwright-go /root/.cache/ms-playwright-go
 
 RUN chmod -R 755 /opt/browsers \
-    && chmod -R 755 /opt/ms-playwright-go
+    && chmod -R 755 /root/.cache/ms-playwright-go
 
 COPY --from=builder /usr/bin/google-maps-scraper /usr/bin/
 
