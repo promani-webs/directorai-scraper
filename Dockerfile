@@ -1,5 +1,5 @@
 # Build stage for Playwright dependencies
-FROM ubuntu:22.04 AS playwright-deps
+FROM ubuntu:24.04 AS playwright-deps
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 #ENV PLAYWRIGHT_DRIVER_PATH=/opt/
 RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
@@ -26,7 +26,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdbus-1-3 \
     libxkbcommon0 \
     libgbm1 \
-    libasound2 \
+    libasound2t64 \
     libpangocairo-1.0-0 \
     libxcomposite1 \
     libxdamage1 \
