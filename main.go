@@ -76,9 +76,9 @@ func main() {
 	_ = runnerInstance.Close(ctx)
 	runner.Telemetry().Close()
 
-	cancel()
-
 	log.Println("scraped successfully")
+
+	cancel()
 
 	os.Exit(0)
 }

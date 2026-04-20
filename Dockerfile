@@ -2,10 +2,10 @@
 # Base runtime with all Chromium system deps + Playwright driver preinstalled.
 # Using MCR image avoids any apt-get update against archive.ubuntu.com,
 # which is intermittently unreliable (400 Bad Request / mirror outages).
-ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.52.0-jammy
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.57.0-jammy
 
 # ---------- Builder (Go) ----------
-FROM golang:1.26.1-bookworm AS builder
+FROM golang:1.26.2-bookworm AS builder
 WORKDIR /app
 
 # Resiliency for any apt call that may run during builder stage.
@@ -38,16 +38,16 @@ RUN set -eux; \
 # Chromium browsers at /ms-playwright. We just need to seed playwright-go's
 # own cache location so the Go driver does not re-download anything at runtime.
 RUN set -eux; \
-    mkdir -p /root/.cache/ms-playwright-go/1.52.0; \
+    mkdir -p /root/.cache/ms-playwright-go/1.57.0; \
     if [ -d /ms-playwright-node ]; then \
-        cp -a /ms-playwright-node /root/.cache/ms-playwright-go/1.52.0/package; \
+        cp -a /ms-playwright-node /root/.cache/ms-playwright-go/1.57.0/package; \
     elif [ -d "$(npm root -g 2>/dev/null)/playwright" ]; then \
-        cp -a "$(npm root -g)/playwright" /root/.cache/ms-playwright-go/1.52.0/package; \
+        cp -a "$(npm root -g)/playwright" /root/.cache/ms-playwright-go/1.57.0/package; \
     else \
         npm_root="$(npm root -g)"; \
         mkdir -p "$npm_root"; \
-        npm i -g --silent playwright@1.52.0; \
-        cp -a "$npm_root/playwright" /root/.cache/ms-playwright-go/1.52.0/package; \
+        npm i -g --silent playwright@1.57.0; \
+        cp -a "$npm_root/playwright" /root/.cache/ms-playwright-go/1.57.0/package; \
     fi
 
 # ---------- Final runtime ----------
