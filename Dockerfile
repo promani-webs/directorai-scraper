@@ -34,21 +34,55 @@ RUN set -eux; \
     printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::ForceIPv4 "true";\n' \
       > /etc/apt/apt.conf.d/99-directorai-resilience
 
-# The MCR Playwright image already ships Node.js + the Playwright CLI and
-# Chromium browsers at /ms-playwright. We just need to seed playwright-go's
-# own cache location so the Go driver does not re-download anything at runtime.
+# Descargar el driver oficial de Playwright (zip que incluye binario `node`
+# statically linked + carpeta `package/` con la librería).  La estructura
+# que espera playwright-go es:
+#
+#     $HOME/.cache/ms-playwright-go/<VERSION>/
+#     ├── node              <- binario node (NO el del sistema)
+#     ├── package/          <- librería playwright npm (driver.js, etc.)
+#     └── ... (browsers.json, etc.)
+#
+# El bug del Dockerfile previo era copiar SOLO la librería npm a `package/`
+# sin incluir el binario `node`.  Resultado en runtime:
+#
+#     fork/exec /root/.cache/ms-playwright-go/1.57.0/node:
+#         no such file or directory
+#
+# La forma correcta (la que usa `playwright-go` internamente cuando descarga
+# al runtime) es bajar el zip oficial y extraerlo entero.  Lo hacemos en
+# build time para que la imagen sea self-contained y no necesite red al
+# arrancar el contenedor.
 RUN set -eux; \
-    mkdir -p /root/.cache/ms-playwright-go/1.57.0; \
-    if [ -d /ms-playwright-node ]; then \
-        cp -a /ms-playwright-node /root/.cache/ms-playwright-go/1.57.0/package; \
-    elif [ -d "$(npm root -g 2>/dev/null)/playwright" ]; then \
-        cp -a "$(npm root -g)/playwright" /root/.cache/ms-playwright-go/1.57.0/package; \
+    DRIVER_VER=1.57.0; \
+    DRIVER_DIR=/root/.cache/ms-playwright-go/$DRIVER_VER; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends curl unzip ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p "$DRIVER_DIR"; \
+    cd /tmp; \
+    # CDN principal de Playwright; mantenemos azureedge.net como mirror
+    # de respaldo por si el primario falla en build time.
+    for url in \
+        "https://cdn.playwright.dev/builds/driver/playwright-${DRIVER_VER}-linux.zip" \
+        "https://playwright.azureedge.net/builds/driver/playwright-${DRIVER_VER}-linux.zip"; do \
+        if curl -fsSL --retry 5 --retry-delay 3 -o driver.zip "$url"; then break; fi; \
+    done; \
+    test -s driver.zip; \
+    unzip -q driver.zip -d driver-extract; \
+    # Tolerar dos layouts del zip:
+    #   (A) raíz contiene `playwright/` (versiones antiguas)
+    #   (B) los archivos `node`, `package/`, ... están en la raíz directamente
+    if [ -d driver-extract/playwright ]; then \
+        cp -a driver-extract/playwright/. "$DRIVER_DIR/"; \
     else \
-        npm_root="$(npm root -g)"; \
-        mkdir -p "$npm_root"; \
-        npm i -g --silent playwright@1.57.0; \
-        cp -a "$npm_root/playwright" /root/.cache/ms-playwright-go/1.57.0/package; \
-    fi
+        cp -a driver-extract/. "$DRIVER_DIR/"; \
+    fi; \
+    # Validación: los dos artefactos críticos deben existir.  Si no,
+    # falla el build aquí (mejor que descubrirlo en runtime).
+    test -x "$DRIVER_DIR/node"; \
+    test -d "$DRIVER_DIR/package"; \
+    rm -rf driver.zip driver-extract
 
 # ---------- Final runtime ----------
 FROM ${PLAYWRIGHT_IMAGE}
