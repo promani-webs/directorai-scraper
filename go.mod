@@ -317,4 +317,8 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 )
 
+// Fork con fix del bug de inactividad (lastActivityAt cero hacía que el
+// primer ticker matara scrapemate antes de que el primer job terminara).
+// Ver https://github.com/promani-webs/scrapemate/commit/41f4721dfb28
+replace github.com/gosom/scrapemate => github.com/promani-webs/scrapemate v0.0.0-20260505065019-41f4721dfb28
 //replace github.com/gosom/scrapemate v1.0.0 => ../scrapemate
