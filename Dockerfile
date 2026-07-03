@@ -24,65 +24,57 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # ---------- Playwright-go driver cache ----------
 # Precompute the playwright-go driver cache on the same Playwright base we'll
-# ship, so runtime reuses it verbatim (no extra downloads, no apt).
-FROM ${PLAYWRIGHT_IMAGE} AS playwright-deps
-# MCR Playwright images default to non-root 'pwuser' since ~v1.25.
-# Force root so apt-get / writes to /root/.cache/ / /etc/apt work.
-USER root
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN set -eux; \
-    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::ForceIPv4 "true";\n' \
-      > /etc/apt/apt.conf.d/99-directorai-resilience
-
-# Descargar el driver oficial de Playwright (zip que incluye binario `node`
-# statically linked + carpeta `package/` con la librería).  La estructura
-# que espera playwright-go es:
+# ship, so runtime reuses it verbatim (no network at container start).
+#
+# playwright-go (v0.57xx) espera EXACTAMENTE esta estructura y ejecuta
+# `<DIR>/node <DIR>/package/cli.js ...`:
 #
 #     $HOME/.cache/ms-playwright-go/<VERSION>/
-#     ├── node              <- binario node (NO el del sistema)
-#     ├── package/          <- librería playwright npm (driver.js, etc.)
-#     └── ... (browsers.json, etc.)
+#     |- node          <- binario node (playwright-go NO usa el del sistema)
+#     `- package/      <- paquete npm 'playwright' (incluye cli.js)
 #
-# El bug del Dockerfile previo era copiar SOLO la librería npm a `package/`
-# sin incluir el binario `node`.  Resultado en runtime:
+# IMPORTANTE - por que NO descargamos el zip del driver:
+# El zip oficial `playwright-<VER>-linux.zip` DEJO de publicarse a partir de
+# 1.57.0 (1.56.0 existe; 1.57.0 da 404 en cdn.playwright.dev, azureedge,
+# akamai y verizon - los unicos hosts que usa playwright-go). Por eso el
+# metodo `curl` quedo roto sin arreglo posible via URL.
 #
-#     fork/exec /root/.cache/ms-playwright-go/1.57.0/node:
-#         no such file or directory
-#
-# La forma correcta (la que usa `playwright-go` internamente cuando descarga
-# al runtime) es bajar el zip oficial y extraerlo entero.  Lo hacemos en
-# build time para que la imagen sea self-contained y no necesite red al
-# arrancar el contenedor.
+# Historial de bugs a NO repetir:
+#   - Copiar SOLO `package/` sin `node`  -> runtime: "fork/exec .../node:
+#     no such file or directory".
+#   - Copiar SOLO `node` sin `package/cli.js` -> playwright-go intenta
+#     DESCARGAR el driver (404) y aborta.
+# Aqui aportamos AMBOS desde la propia imagen de Playwright (self-contained).
+FROM ${PLAYWRIGHT_IMAGE} AS playwright-deps
+# MCR Playwright images default to non-root 'pwuser' since ~v1.25.
+# Force root so writes to /root/.cache/ work.
+USER root
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 RUN set -eux; \
     DRIVER_VER=1.57.0; \
     DRIVER_DIR=/root/.cache/ms-playwright-go/$DRIVER_VER; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends curl unzip ca-certificates; \
-    rm -rf /var/lib/apt/lists/*; \
     mkdir -p "$DRIVER_DIR"; \
-    cd /tmp; \
-    # CDN principal de Playwright; mantenemos azureedge.net como mirror
-    # de respaldo por si el primario falla en build time.
-    for url in \
-        "https://cdn.playwright.dev/builds/driver/playwright-${DRIVER_VER}-linux.zip" \
-        "https://playwright.azureedge.net/builds/driver/playwright-${DRIVER_VER}-linux.zip"; do \
-        if curl -fsSL --retry 5 --retry-delay 3 -o driver.zip "$url"; then break; fi; \
-    done; \
-    test -s driver.zip; \
-    unzip -q driver.zip -d driver-extract; \
-    # Tolerar dos layouts del zip:
-    #   (A) raíz contiene `playwright/` (versiones antiguas)
-    #   (B) los archivos `node`, `package/`, ... están en la raíz directamente
-    if [ -d driver-extract/playwright ]; then \
-        cp -a driver-extract/playwright/. "$DRIVER_DIR/"; \
+    # 1) package/  (paquete playwright con cli.js). La imagen MCR NO lo trae
+    #    preinstalado globalmente, asi que lo instalamos desde npm (sin
+    #    descargar navegadores: ya estan en /ms-playwright).
+    if [ -d /ms-playwright-node ]; then \
+        cp -a /ms-playwright-node "$DRIVER_DIR/package"; \
+    elif [ -d "$(npm root -g 2>/dev/null)/playwright" ]; then \
+        cp -a "$(npm root -g)/playwright" "$DRIVER_DIR/package"; \
     else \
-        cp -a driver-extract/. "$DRIVER_DIR/"; \
+        npm i -g --silent "playwright@${DRIVER_VER}"; \
+        cp -a "$(npm root -g)/playwright" "$DRIVER_DIR/package"; \
     fi; \
-    # Validación: los dos artefactos críticos deben existir.  Si no,
-    # falla el build aquí (mejor que descubrirlo en runtime).
+    # 2) node  (playwright-go ejecuta <DIR>/node, no el del sistema). Copiamos
+    #    el binario node de la propia imagen (compatible con esta version).
+    cp "$(command -v node)" "$DRIVER_DIR/node"; \
+    chmod +x "$DRIVER_DIR/node"; \
+    # 3) Validacion en build (mejor fallar aqui que en runtime).
     test -x "$DRIVER_DIR/node"; \
-    test -d "$DRIVER_DIR/package"; \
-    rm -rf driver.zip driver-extract
+    test -f "$DRIVER_DIR/package/cli.js"; \
+    "$DRIVER_DIR/node" "$DRIVER_DIR/package/cli.js" --version
 
 # ---------- Final runtime ----------
 FROM ${PLAYWRIGHT_IMAGE}
