@@ -2,10 +2,10 @@
 # Base runtime with all Chromium system deps + Playwright driver preinstalled.
 # Using MCR image avoids any apt-get update against archive.ubuntu.com,
 # which is intermittently unreliable (400 Bad Request / mirror outages).
-ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.57.0-jammy
+ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.61.1-jammy
 
 # ---------- Builder (Go) ----------
-FROM golang:1.26.2-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /app
 
 # Resiliency for any apt call that may run during builder stage.
@@ -26,7 +26,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Precompute the playwright-go driver cache on the same Playwright base we'll
 # ship, so runtime reuses it verbatim (no network at container start).
 #
-# playwright-go (v0.57xx) espera EXACTAMENTE esta estructura y ejecuta
+# playwright-go (mxschmitt v0.61xx, igual que v0.57xx) espera EXACTAMENTE
+# esta estructura y ejecuta
 # `<DIR>/node <DIR>/package/cli.js ...`:
 #
 #     $HOME/.cache/ms-playwright-go/<VERSION>/
@@ -37,7 +38,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # El zip oficial `playwright-<VER>-linux.zip` DEJO de publicarse a partir de
 # 1.57.0 (1.56.0 existe; 1.57.0 da 404 en cdn.playwright.dev, azureedge,
 # akamai y verizon - los unicos hosts que usa playwright-go). Por eso el
-# metodo `curl` quedo roto sin arreglo posible via URL.
+# metodo `curl` quedo roto sin arreglo posible via URL. El fork mxschmitt
+# de playwright-go (>=0.6100) vuelve a poder descargar (npm + nodejs.org),
+# pero seguimos pre-sembrando la cache para no depender de la red.
+#
+# OJO al actualizar: DRIVER_VER debe ser exactamente playwrightCliVersion
+# del playwright-go que resuelva go.mod (scripts/check-compat.sh lo valida).
 #
 # Historial de bugs a NO repetir:
 #   - Copiar SOLO `package/` sin `node`  -> runtime: "fork/exec .../node:
@@ -53,7 +59,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN set -eux; \
-    DRIVER_VER=1.57.0; \
+    DRIVER_VER=1.61.1; \
     DRIVER_DIR=/root/.cache/ms-playwright-go/$DRIVER_VER; \
     mkdir -p "$DRIVER_DIR"; \
     # 1) package/  (paquete playwright con cli.js). La imagen MCR NO lo trae

@@ -3,6 +3,7 @@ package gmaps
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ type PlaceJobOptions func(*PlaceJob)
 type PlaceJob struct {
 	scrapemate.Job
 
-	UsageInResultststs      bool
+	UsageInResults          bool
 	ExtractEmail            bool
 	ExitMonitor             exiter.Exiter
 	ExtractExtraReviews     bool
@@ -42,7 +43,7 @@ func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews b
 		},
 	}
 
-	job.UsageInResultststs = true
+	job.UsageInResults = true
 	job.ExtractEmail = extractEmail
 	job.ExtractExtraReviews = extraExtraReviews
 
@@ -118,7 +119,14 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	domReviews, ok := resp.Meta["dom_reviews"].([]DOMReview)
 	if ok && len(domReviews) > 0 {
 		convertedReviews := ConvertDOMReviewsToReviews(domReviews)
-		entry.UserReviewsExtended = append(entry.UserReviewsExtended, convertedReviews...)
+
+		deduped := dedupeDOMReviewsAgainstPrimary(entry.UserReviews, convertedReviews)
+		if len(deduped) != len(convertedReviews) {
+			log.Printf("DOM reviews: dropped %d of %d already present in user_reviews",
+				len(convertedReviews)-len(deduped), len(convertedReviews))
+		}
+
+		entry.UserReviewsExtended = append(entry.UserReviewsExtended, deduped...)
 	}
 
 	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
@@ -133,7 +141,7 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 		emailJob := NewEmailJob(j.ID, &entry, opts...)
 
-		j.UsageInResultststs = false
+		j.UsageInResults = false
 
 		return nil, []scrapemate.IJob{emailJob}, nil
 	} else if j.ExitMonitor != nil && !j.WriterManagedCompletion {
@@ -216,8 +224,8 @@ func (j *PlaceJob) getRaw(ctx context.Context, page scrapemate.BrowserPage) (any
 				continue
 			}
 
-			// Check for valid non-null result
-			// go-rod may return nil for JS null, or empty string
+			// Check for valid non-null result.
+			// JS null may arrive as nil, and empty strings are not useful here.
 			if raw == nil {
 				<-time.After(time.Millisecond * 200)
 				continue
@@ -291,7 +299,7 @@ func (j *PlaceJob) getReviewCount(data []byte) int {
 }
 
 func (j *PlaceJob) UseInResults() bool {
-	return j.UsageInResultststs
+	return j.UsageInResults
 }
 
 const js = `
