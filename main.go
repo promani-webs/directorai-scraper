@@ -32,8 +32,13 @@ func (h *filteringHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func main() {
-	// Filter out redundant playwright-go logs
-	slog.SetDefault(slog.New(&filteringHandler{Handler: slog.Default().Handler()}))
+	// Filter out redundant playwright-go logs.
+	// El handler interno escribe DIRECTO a stderr (NewTextHandler): envolver
+	// slog.Default() crea un ciclo con el paquete log estandar (log.Println
+	// -> puente slog -> handler por defecto -> log de nuevo) que se
+	// auto-bloquea en el mutex del logger; el proceso se colgaba justo antes
+	// de imprimir "scraped successfully".
+	slog.SetDefault(slog.New(&filteringHandler{Handler: slog.NewTextHandler(os.Stderr, nil)}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
