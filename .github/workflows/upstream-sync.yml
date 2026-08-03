@@ -1,0 +1,86 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configurar git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream con la politica del fork
+        id: merge
+        run: |
+          before=$(git rev-parse HEAD)
+          set +e
+          bash scripts/sync-upstream.sh
+          code=$?
+          set -e
+          after=$(git rev-parse HEAD)
+          if [ "$code" -eq 2 ]; then
+            git merge --abort || true
+            echo "result=conflicts" >> "$GITHUB_OUTPUT"
+          elif [ "$before" != "$after" ]; then
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=uptodate" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verificar build, tests y compatibilidad DirectorAI
+        if: steps.merge.outputs.result == 'merged'
+        id: verify
+        continue-on-error: true
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./gmaps/... ./internal/... ./grid/... ./deduper/... ./exiter/...
+          bash scripts/check-compat.sh
+
+      - name: Abrir o actualizar el PR de sync
+        if: steps.merge.outputs.result == 'merged'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse --short upstream/main)
+          git push -f origin HEAD:upstream-sync
+          status="La verificacion (build + tests + compat DirectorAI) ha pasado."
+          if [ "${{ steps.verify.outcome }}" = "failure" ]; then
+            status="ATENCION: la verificacion ha fallado. Revisar los logs del workflow antes de mergear."
+          fi
+          body="Merge automatico de gosom/google-maps-scraper ($sha) manteniendo las personalizaciones DirectorAI (ver UPSTREAM-SYNC.md). $status"
+          gh pr create --base main --head upstream-sync \
+            --title "Sync upstream $sha" --body "$body" \
+            || gh pr comment upstream-sync --body "Actualizado a upstream $sha. $status"
+
+      - name: Avisar de conflictos manuales
+        if: steps.merge.outputs.result == 'conflicts'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse --short upstream/main)
+          title="Sync upstream $sha: conflictos manuales"
+          existing=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq 'length')
+          if [ "$existing" = "0" ]; then
+            gh issue create --title "$title" \
+              --body "El merge automatico con upstream encontro conflictos fuera de la politica de UPSTREAM-SYNC.md. Ejecuta scripts/sync-upstream.sh en local (o pideselo a Claude Code), resuelve los ficheros que lista, y abre el PR. Los ficheros en conflicto estan en el log del workflow."
+          fi

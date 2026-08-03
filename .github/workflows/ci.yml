@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./gmaps/... ./internal/... ./grid/... ./deduper/... ./exiter/...
+      - run: bash scripts/check-compat.sh
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build imagen (mismo comando que DirectorAI.py)
+        run: DOCKER_BUILDKIT=1 docker build --pull --platform linux/amd64 -t directorai-scraper .
