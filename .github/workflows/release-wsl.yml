@@ -1,0 +1,52 @@
+name: Release WSL binary
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-wsl
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verificar antes de publicar
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./gmaps/... ./internal/... ./grid/... ./deduper/... ./exiter/...
+          bash scripts/check-compat.sh
+
+      - name: Compilar binario linux/amd64 para WSL
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o directorai-scraper-linux-amd64 .
+          sha256sum directorai-scraper-linux-amd64 > directorai-scraper-linux-amd64.sha256
+          ls -la directorai-scraper-linux-amd64
+
+      - name: Publicar release rodante wsl-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f wsl-latest
+          git push -f origin wsl-latest
+          notes="Compilado automaticamente de $(git rev-parse --short HEAD) ($(date -u +%Y-%m-%d)). Lo consume el modo WSL de DirectorAI."
+          if gh release view wsl-latest >/dev/null 2>&1; then
+            gh release upload wsl-latest directorai-scraper-linux-amd64 directorai-scraper-linux-amd64.sha256 --clobber
+            gh release edit wsl-latest --notes "$notes" --latest
+          else
+            gh release create wsl-latest --title "Binario WSL (rodante)" --notes "$notes" --latest \
+              directorai-scraper-linux-amd64 directorai-scraper-linux-amd64.sha256
+          fi

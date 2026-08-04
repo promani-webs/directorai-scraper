@@ -67,10 +67,19 @@ jobs:
           if [ "${{ steps.verify.outcome }}" = "failure" ]; then
             status="ATENCION: la verificacion ha fallado. Revisar los logs del workflow antes de mergear."
           fi
-          body="Merge automatico de gosom/google-maps-scraper ($sha) manteniendo las personalizaciones DirectorAI (ver UPSTREAM-SYNC.md). $status"
+          {
+            echo "Merge automatico de gosom/google-maps-scraper ($sha) manteniendo las personalizaciones DirectorAI (ver UPSTREAM-SYNC.md)."
+            echo
+            echo "$status"
+            echo
+            echo "Al mergear este PR se publicara automaticamente el binario WSL nuevo (release wsl-latest)."
+            echo
+            echo "### Commits de upstream que entran"
+            git log --format='- %h %s' HEAD^1..HEAD^2 | head -60
+          } > /tmp/pr_body.md
           gh pr create --base main --head upstream-sync \
-            --title "Sync upstream $sha" --body "$body" \
-            || gh pr comment upstream-sync --body "Actualizado a upstream $sha. $status"
+            --title "Sync upstream $sha" --body-file /tmp/pr_body.md \
+            || gh pr comment upstream-sync --body-file /tmp/pr_body.md
 
       - name: Avisar de conflictos manuales
         if: steps.merge.outputs.result == 'conflicts'

@@ -44,6 +44,20 @@ Workflow permissions, activar **"Allow GitHub Actions to create and
 approve pull requests"**. Nota: GitHub desactiva los crons tras 60 días
 sin actividad en el repo; el workflow_dispatch manual siempre funciona.
 
+### Binario WSL (release rodante `wsl-latest`)
+
+`.github/workflows/release-wsl.yml` se dispara en cada push a `main`:
+verifica (build + vet + tests + check-compat), compila el binario
+`linux/amd64` estático y lo publica machacando el release `wsl-latest`.
+URL estable que consume el modo WSL de DirectorAI.py:
+
+```
+https://github.com/promani-webs/directorai-scraper/releases/download/wsl-latest/directorai-scraper-linux-amd64
+```
+
+Consecuencia: al mergear el PR semanal de sync, el binario WSL nuevo se
+publica solo — Docker y WSL quedan siempre en la misma versión.
+
 ### Manual (local)
 
 ```bash
