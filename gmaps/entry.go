@@ -448,6 +448,10 @@ func EntryFromJSON(raw []byte, reviewCountOnly ...bool) (entry Entry, err error)
 		}
 	}
 
+	if len(entry.Images) == 0 {
+		entry.Images = limitedViewImages(darray)
+	}
+
 	// Extract Street View URL from images
 	entry.StreetViewURL = extractStreetViewURL(entry.Images)
 
@@ -969,6 +973,82 @@ func stringify(v any) string {
 }
 
 // extractStreetViewURL finds the Street View image and extracts the panoid to create a proper URL
+// limitedViewImages lee las fotos de la "vista limitada" de Google Maps, la
+// que sirve a quien no ha iniciado sesión: ahí la galería (darray[171]) llega
+// vacía, pero la portada, el carrusel y la fila de Street View siguen en
+// darray[72][0], darray[51][0] y darray[37][0]. De cada elemento, la URL va en
+// [6][0], la etiqueta traducida en [20] ("Foto", "Fotka", "Фотографія"...) y
+// el tipo en [21][2][1] (3 foto, 4 vídeo, 2 Street View), que no depende del
+// idioma. Se quedan las fotos, sin repetir (por su identificador, [0], y por
+// la URL antes del "="), y el panorama de Street View con el título
+// "Street View", para que extractStreetViewURL y la aplicación lo reconozcan.
+// Los vídeos no.
+//
+//nolint:gomnd // it's ok, I need the indexes
+func limitedViewImages(darray []any) []Image {
+	var (
+		images []Image
+		seen   = map[string]bool{}
+		hasSV  bool
+	)
+
+	for _, block := range [][]int{{72, 0}, {51, 0}, {37, 0}} {
+		for _, el := range getNthElementAndCast[[]any](darray, block...) {
+			item, ok := el.([]any)
+			if !ok {
+				continue
+			}
+
+			link := getNthElementAndCast[string](item, 6, 0)
+			if link == "" {
+				continue
+			}
+
+			kind := int(getNthElementAndCast[float64](item, 21, 2, 1))
+			if kind == 0 && strings.Contains(link, "streetviewpixels") {
+				kind = 2
+			}
+
+			title := getNthElementAndCast[string](item, 20)
+
+			switch kind {
+			case 2:
+				if hasSV || !panoidRegex.MatchString(link) {
+					continue
+				}
+
+				hasSV = true
+				title = "Street View"
+			case 4:
+				continue
+			default:
+				if title == "" {
+					title = "Photo"
+				}
+			}
+
+			base := link
+			if i := strings.Index(base, "="); i != -1 {
+				base = base[:i]
+			}
+
+			id := getNthElementAndCast[string](item, 0)
+			if seen[base] || (id != "" && seen["id:"+id]) {
+				continue
+			}
+
+			seen[base] = true
+			if id != "" {
+				seen["id:"+id] = true
+			}
+
+			images = append(images, Image{Title: title, Image: link})
+		}
+	}
+
+	return images
+}
+
 func extractStreetViewURL(images []Image) string {
 	for _, img := range images {
 		if strings.Contains(img.Title, "Street View") {

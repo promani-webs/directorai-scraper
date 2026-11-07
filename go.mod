@@ -285,4 +285,7 @@ tool (
 // primer ticker matara scrapemate antes de que el primer job terminara).
 // Rebasado sobre scrapemate v1.3.0 upstream (playwright-go de mxschmitt).
 // Ver https://github.com/promani-webs/scrapemate/commit/dc07eaf18ebf
-replace github.com/gosom/scrapemate => github.com/promani-webs/scrapemate v1.3.1-0.20260803191709-dc07eaf18ebf
+// Y sin --no-zygote ni --single-process fuera de Linux: con el Chrome nativo
+// de macOS cada búsqueda moría con «target closed» (7-nov-2026).
+// Ver https://github.com/promani-webs/scrapemate/commit/56b069b7490a
+replace github.com/gosom/scrapemate => github.com/promani-webs/scrapemate v1.3.1-0.20261107152557-56b069b7490a
