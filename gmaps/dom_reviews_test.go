@@ -47,10 +47,14 @@ func Test_decodeDOMReviews(t *testing.T) {
 func Test_ConvertDOMReviewsToReviews(t *testing.T) {
 	const reviewID = "ChZDSUhNMG9nS0VJQ0FnSUR2c0tYWVh3EAE"
 
+	const authorURL = "https://www.google.com/maps/contrib/116111130377271376564/reviews?hl=en"
+
 	got := ConvertDOMReviewsToReviews([]DOMReview{
 		{
 			ReviewID:                reviewID,
 			AuthorName:              "Reviewer A",
+			AuthorURL:               authorURL,
+			ProfilePicture:          "https://lh3.googleusercontent.com/a/ACg8ocABC=s60-c",
 			Rating:                  5,
 			RelativeTimeDescription: "3 months ago",
 		},
@@ -62,6 +66,10 @@ func Test_ConvertDOMReviewsToReviews(t *testing.T) {
 	assert.Equal(t, 5, got[0].Rating)
 	assert.Equal(t, "Reviewer A", got[0].Name)
 	assert.Equal(t, "3 months ago", got[0].When)
+	// The contributor URL is the only identifier that is the same person
+	// across businesses. Losing it here is silent: reviews still look fine.
+	assert.Equal(t, authorURL, got[0].AuthorURL)
+	assert.Equal(t, "https://lh3.googleusercontent.com/a/ACg8ocABC=s60-c", got[0].ProfilePicture)
 }
 
 func Test_dedupeDOMReviewsAgainstPrimary(t *testing.T) {

@@ -349,6 +349,12 @@ func ConvertDOMReviewsToReviews(domReviews []DOMReview) []Review {
 			When:           dr.RelativeTimeDescription,
 			Images:         dr.Images,
 			ReviewID:       dr.ReviewID,
+			// The DOM extractor reads the contributor URL and this conversion
+			// used to drop it, so every review that came from the DOM lost the
+			// only identifier that is stable across businesses. Everything
+			// downstream then had to fall back to name plus profile picture,
+			// which is not the same person twice.
+			AuthorURL: dr.AuthorURL,
 		}
 
 		if review.Name != "" {
